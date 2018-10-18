@@ -68,8 +68,6 @@ def main():
     # Get EOS genesis file from EOS Authority and check the hash
     if not os.path.exists(EOS_GENESIS_FILE):
         logger.info('Downloading EOS genesis')
-        # download_file(SCRIPT_PATH + '/snapshot.csv',
-                      # 'https://raw.githubusercontent.com/eosauthority/genesis/master/snapshot-files/final/0/snapshot.csv')
         download_file(SCRIPT_PATH + '/snapshot.csv',
                       'https://raw.githubusercontent.com/eoscafe/eos-snapshot-validation/master/eosnewyork/snapshot.csv')
 
@@ -99,7 +97,7 @@ def main():
     telos_total_balance = eos_genesis['balance'].sum()
     logger.debug('TELOS genesis total balance: {} TLOS'.format(
         telos_total_balance))
-    eos_genesis.to_csv(TELOS_GENESIS_FILE, header=False)
+    eos_genesis.to_csv(TELOS_GENESIS_FILE, header=False, float_format='%.4f')
     if telos_total_balance != TELOS_GENESIS_BALANCE:
         logger.critical('TELOS genesis balance is wrong')
         exit(1)
