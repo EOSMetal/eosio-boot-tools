@@ -1,1 +1,1 @@
-# telos-bios
+# eosio-boot-tools
