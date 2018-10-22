@@ -110,71 +110,57 @@ def get_account_creation_actions(account, balance, key):
 
     # Create delegatebw tx
     f_balance = float(balance)
-    if f_balance > 10.0001:
-        delegate_amount = (f_balance - 10) / 2
+    f_balance = float(balance)
+    if f_balance < 3:
+        liquid = 0.1
+    elif f_balance <= 11:
+        liquid = 2.0
+    else:
+        liquid = 10.0
+    
+    remainder = f_balance - liquid
+    delegate_cpu = round(remainder / 2, 4)
+    delegate_net = remainder - delegate_cpu
 
-        delegate_payload = {
-            'from': 'eosio', 
-            'receiver': account, 
-            'stake_net_quantity': '{:.4f} {}'.format(delegate_amount, SYMBOL), 
-            'stake_cpu_quantity': '{:.4f} {}'.format(delegate_amount, SYMBOL), 
-            'transfer': True 
-        }
-        delegate_data = cleos.abi_json_to_bin('eosio', 'delegatebw', delegate_payload)
-        delegate_action = {
-            'account' : 'eosio',
-            'name' : 'delegatebw',
-            'authorization' : [
-                {
-                    'actor' : 'eosio',
-                    'permission' : 'active'
-                } ],
-            'data' : delegate_data['binargs']
-        }
+    delegate_payload = {
+        'from': 'eosio', 
+        'receiver': account, 
+        'stake_net_quantity': '{:.4f} {}'.format(delegate_net, SYMBOL), 
+        'stake_cpu_quantity': '{:.4f} {}'.format(delegate_cpu, SYMBOL), 
+        'transfer': True 
+    }
+    delegate_data = cleos.abi_json_to_bin('eosio', 'delegatebw', delegate_payload)
+    delegate_action = {
+        'account' : 'eosio',
+        'name' : 'delegatebw',
+        'authorization' : [
+            {
+                'actor' : 'eosio',
+                'permission' : 'active'
+            } ],
+        'data' : delegate_data['binargs']
+    }
 
-        # Create transfer tx
-        transfer_payload = {
-            "from": "eosio", 
-            "to": account, 
-            "quantity": "{} {}".format('10.0000', SYMBOL), 
-            "memo": "transfer genesis balance to {}".format(account)
-        }
-        
-        transfer_data = cleos.abi_json_to_bin('eosio.token', 'transfer', transfer_payload)
-        transfer_action = {
-            "account": "eosio.token", 
-            "name": "transfer", 
-            "authorization": [
-                {
-                    "actor": "eosio", 
-                    "permission": "active"
-                }], 
-            "data": transfer_data['binargs']}
+    # Create transfer tx
+    transfer_payload = {
+        "from": "eosio", 
+        "to": account, 
+        "quantity": '{:.4f} {}'.format(liquid, SYMBOL), 
+        "memo": "transfer genesis balance to {}".format(account)
+    }
+    
+    transfer_data = cleos.abi_json_to_bin('eosio.token', 'transfer', transfer_payload)
+    transfer_action = {
+        "account": "eosio.token", 
+        "name": "transfer", 
+        "authorization": [
+            {
+                "actor": "eosio", 
+                "permission": "active"
+            }], 
+        "data": transfer_data['binargs']}
 
-        return (newaccount_action, buyram_action, delegate_action, transfer_action)
-
-    #Balance < 10
-    else: 
-        # Create transfer tx
-        transfer_payload = {
-            "from": "eosio", 
-            "to": account, 
-            "quantity": "{} {}".format(balance, SYMBOL), 
-            "memo": "transfer genesis balance to {}".format(account)
-        }
-        
-        transfer_data = cleos.abi_json_to_bin('eosio.token', 'transfer', transfer_payload)
-        transfer_action = {
-            "account": "eosio.token", 
-            "name": "transfer", 
-            "authorization": [
-                {
-                    "actor": "eosio", 
-                    "permission": "active"
-                }], 
-            "data": transfer_data['binargs']}
-
-        return (newaccount_action, buyram_action, transfer_action)
+    return (newaccount_action, buyram_action, delegate_action, transfer_action)
 
 def get_chain_params():
     return cleos.get_table('eosio', 'eosio', 'global')['rows'][0]

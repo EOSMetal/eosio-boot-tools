@@ -1,3 +1,6 @@
 *.log
 snapshot.csv
 .vscode/
+deploy_contracts_accounts.sh
+wallet_pass
+local_testnet/
