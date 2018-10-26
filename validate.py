@@ -13,6 +13,8 @@ from multiprocessing import Pool
 
 SCRIPT_PATH = os.path.dirname(os.path.abspath(
     inspect.getfile(inspect.currentframe())))
+pd.set_option('display.expand_frame_repr', False)
+pd.options.display.max_rows = 999
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-v", '--verbose', action="store_true",
@@ -68,6 +70,8 @@ def get_account_info(account):
         if 'unknown key' in str(e):
             logger.critical('Account {} is not on chain'.format(account))
         return '', 0
+
+    #logger.debug('{} {} {}'.format(account, key, balance))
     return key, balance
 
 def get_accounts(accounts):
@@ -100,6 +104,10 @@ def main():
     except Exception as e:
         logger.critical('Error getting acounts from chain: {}'.format(e))
         quit()
+
+    if DEBUG:
+        telos_genesis.to_csv('debug-genesis.csv', header=False)
+        chain_accounts.to_csv('debug-chain.csv', header=False)
 
     logger.info('Checking accounts...')
     if telos_genesis.equals(chain_accounts):
