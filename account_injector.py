@@ -49,9 +49,8 @@ fh = logging.FileHandler(LOG_FILE)
 fh.setFormatter(formatter)
 logger.addHandler(fh)
 
-RAM_KB = 25
+RAM_KB = 4 
 SYMBOL = "TLOS"
-DELEGATION_THRESHOLD = 10
 KEY = "5JRiK3ctuSgPwEsFvY1FeCxW6VHYcGo3h28YkyJYBnEBvtgrhPd"
 SCRIPT_PATH = os.path.dirname(os.path.abspath(
     inspect.getfile(inspect.currentframe())))
