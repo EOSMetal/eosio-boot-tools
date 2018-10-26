@@ -66,9 +66,22 @@ def get_account_info(account):
         result = cleos.get_account(account)
         key = result['permissions'][0]['required_auth']['keys'][0]['key']
         balance = round(asset2float(result['core_liquid_balance']) + asset2float(result['total_resources']['cpu_weight']) + asset2float(result['total_resources']['net_weight']), 4)
+        
+        if len(result['permissions']) > 2:
+            logger.critical('Account {} has more than 2 permissions'.format(account))
+            return '', 0
+        if result['permissions'][0]['required_auth']['keys'][0]['key'] != result['permissions'][0]['required_auth']['keys'][0]['key']:
+            logger.critical('Owner and Active keys for account {} are different'.format(account))
+            return '', 0
+        if len(result['permissions'][0]['required_auth']['keys']) > 1 or len(result['permissions'][1]['required_auth']['keys']) > 1 or len(result['permissions'][0]['required_auth']['accounts']) > 0 or len(result['permissions'][1]['required_auth']['accounts']) > 0:
+            logger.critical('Account {} has weird accounts or keys'.format(account))
+            return '', 0
+
     except Exception as e:
         if 'unknown key' in str(e):
             logger.critical('Account {} is not on chain'.format(account))
+        else:
+            logger.critical(e)
         return '', 0
 
     #logger.debug('{} {} {}'.format(account, key, balance))
