@@ -1,3 +1,3 @@
 #!/bin/bash
 
-/home/jorgechueco/source/telos/build/programs/teclos/teclos "$@"
+/opt/telos-launch/source/telos/build/programs/teclos/teclos "$@"
