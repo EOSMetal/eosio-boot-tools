@@ -12,6 +12,7 @@ import pprint
 import csv
 import requests
 import re
+import traceback
 from multiprocessing import Pool
 
 SCRIPT_PATH = os.path.dirname(os.path.abspath(
@@ -58,7 +59,9 @@ logger.addHandler(fh)
 
 pp = pprint.PrettyPrinter(indent=2)
 BP_ACCOUNTS_FILE = 'eos_bp_accounts.csv'
-TCRP_ACCOUNTS_FILE = 'ram_accounts.csv'
+RAM_ACCOUNTS_FILE = 'ram_accounts.csv'
+TCRP_ACCOUNTS_FILE = 'tcrp_accounts.csv'
+SPECIAL_ACCOUNTS_FILE = 'special_accounts.csv'
 SCRIPT_PATH = os.path.dirname(os.path.abspath(
     inspect.getfile(inspect.currentframe())))
 cleos = eospy.cleos.Cleos(url=API_ENDPOINT)
@@ -69,20 +72,24 @@ def asset2float(asset):
 def get_account_info(account):
     try:
         result = cleos.get_account(account)
+        
         if not  'core_liquid_balance' in result:
             result['core_liquid_balance'] = "0"
-        key = result['permissions'][0]['required_auth']['keys'][0]['key']
         balance = round(asset2float(result['core_liquid_balance']) + asset2float(result['total_resources']['cpu_weight']) + asset2float(result['total_resources']['net_weight']), 4)
         
-        if len(result['permissions']) > 2:
-            logger.critical('Account {} has more than 2 permissions'.format(account))
-            return '', 0
-        if result['permissions'][0]['required_auth']['keys'][0]['key'] != result['permissions'][0]['required_auth']['keys'][0]['key']:
-            logger.critical('Owner and Active keys for account {} are different'.format(account))
-            return '', 0
-        if len(result['permissions'][0]['required_auth']['keys']) > 1 or len(result['permissions'][1]['required_auth']['keys']) > 1 or len(result['permissions'][0]['required_auth']['accounts']) > 0 or len(result['permissions'][1]['required_auth']['accounts']) > 0:
-            logger.critical('Account {} has weird accounts or keys'.format(account))
-            return '', 0
+        if len(result['permissions'][0]['required_auth']['accounts']) == 0:
+            key = result['permissions'][0]['required_auth']['keys'][0]['key']
+            if len(result['permissions']) > 2:
+                logger.critical('Account {} has more than 2 permissions'.format(account))
+                return '', 0
+            if result['permissions'][0]['required_auth']['keys'][0]['key'] != result['permissions'][0]['required_auth']['keys'][0]['key']:
+                logger.critical('Owner and Active keys for account {} are different'.format(account))
+                return '', 0
+            if len(result['permissions'][0]['required_auth']['keys']) > 1 or len(result['permissions'][1]['required_auth']['keys']) > 1 or len(result['permissions'][0]['required_auth']['accounts']) > 0 or len(result['permissions'][1]['required_auth']['accounts']) > 0:
+                logger.critical('Account {} has weird accounts or keys'.format(account))
+                return '', 0
+        else:
+            key = ''
 
     except Exception as e:
         if 'unknown key' in str(e):
@@ -160,10 +167,10 @@ def main():
         print(changes)
     
     #Check ram accounts
-    download_file(TCRP_ACCOUNTS_FILE,'https://raw.githubusercontent.com/Telos-Foundation/snapshots/master/ram_accounts.csv')
+    download_file(RAM_ACCOUNTS_FILE,'https://raw.githubusercontent.com/Telos-Foundation/snapshots/master/ram_accounts.csv')
     logger.info('Loading ram_accounts...')
     try:
-        ram_accounts = pd.read_csv(TCRP_ACCOUNTS_FILE, dtype=str, names=['eth_address','unknown',
+        ram_accounts = pd.read_csv(RAM_ACCOUNTS_FILE, dtype=str, names=['eth_address','unknown',
                                                                          'eos_account', 'eos_key', 'balance']).drop(columns=['eth_address']).drop(columns=['unknown']).sort_values(by=['eos_account'])
         ram_accounts = ram_accounts.drop(0)
         ram_accounts['balance'] = ram_accounts['balance'].apply(lambda x: '{:.4f}'.format(float(x)))           
@@ -191,7 +198,6 @@ def main():
         changes = pd.DataFrame({'from': changed_from, 'to': changed_to}, index=changed.index)
         logger.critical('ram accounts in csv and chain don`t match')
         print(changes)
-        quit()
     
     #Check tcrp accounts
     download_file(TCRP_ACCOUNTS_FILE,'https://raw.githubusercontent.com/Telos-Foundation/snapshots/master/tcrp_accounts.csv')
@@ -225,7 +231,39 @@ def main():
         changes = pd.DataFrame({'from': changed_from, 'to': changed_to}, index=changed.index)
         logger.critical('tcrp accounts in csv and chain don`t match')
         print(changes)
-        quit()
+    
+    #Check special accounts
+    download_file(SPECIAL_ACCOUNTS_FILE,'https://raw.githubusercontent.com/Telos-Foundation/snapshots/master/telos_special_accounts.csv')
+    logger.info('Loading special_accounts...')
+    try:
+        special_accounts = pd.read_csv(SPECIAL_ACCOUNTS_FILE, dtype=str, names=['eth_address',
+                                                                         'eos_account', 'eos_key', 'balance']).drop(columns=['eth_address']).drop(columns=['eos_key']).drop(columns=['balance']).sort_values(by=['eos_account'])
+        special_accounts = special_accounts.drop(0)
+        #special_accounts['balance'] = special_accounts['balance'].apply(lambda x: '{:.4f}'.format(float(x)))           
+        special_accounts = special_accounts.reset_index(drop=True) 
+    except Exception as e:
+        logger.critical(
+            'Error loading special accounts snapshot at {}: {}'.format(SPECIAL_ACCOUNTS_FILE, e))
+        exit(1)
+
+    logger.info('Getting special accounts from chain...')
+    try:
+        chain_accounts = get_accounts(special_accounts['eos_account'].tolist()).sort_values(by=['eos_account']).drop(columns=['eos_key']).drop(columns=['balance'])
+    except Exception as e:
+        logger.critical('Error getting tcrp acounts from chain: {}'.format(e))
+    
+    logger.info('Checking special accounts...')
+    if special_accounts.equals(chain_accounts):
+        logger.info('All special accounts are present on chain') #with the right key and balance')
+    else:
+        ne_stacked = (special_accounts != chain_accounts).stack()
+        changed = ne_stacked[ne_stacked]
+        difference_locations = np.where(special_accounts != chain_accounts)
+        changed_from = special_accounts.values[difference_locations]
+        changed_to = chain_accounts.values[difference_locations]
+        changes = pd.DataFrame({'from': changed_from, 'to': changed_to}, index=changed.index)
+        logger.critical('special accounts in csv and chain don`t match')
+        print(changes)
 
     quit()
     #Check genesis accounts
