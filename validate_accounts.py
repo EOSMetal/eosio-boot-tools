@@ -58,7 +58,7 @@ logger.addHandler(fh)
 
 pp = pprint.PrettyPrinter(indent=2)
 BP_ACCOUNTS_FILE = 'eos_bp_accounts.csv'
-RAM_ACCOUNTS_FILE = 'ram_accounts.csv'
+TCRP_ACCOUNTS_FILE = 'ram_accounts.csv'
 SCRIPT_PATH = os.path.dirname(os.path.abspath(
     inspect.getfile(inspect.currentframe())))
 cleos = eospy.cleos.Cleos(url=API_ENDPOINT)
@@ -160,17 +160,17 @@ def main():
         print(changes)
     
     #Check ram accounts
-    download_file(RAM_ACCOUNTS_FILE,'https://raw.githubusercontent.com/Telos-Foundation/snapshots/master/ram_accounts.csv')
+    download_file(TCRP_ACCOUNTS_FILE,'https://raw.githubusercontent.com/Telos-Foundation/snapshots/master/ram_accounts.csv')
     logger.info('Loading ram_accounts...')
     try:
-        ram_accounts = pd.read_csv(RAM_ACCOUNTS_FILE, dtype=str, names=['eth_address','unknown',
+        ram_accounts = pd.read_csv(TCRP_ACCOUNTS_FILE, dtype=str, names=['eth_address','unknown',
                                                                          'eos_account', 'eos_key', 'balance']).drop(columns=['eth_address']).drop(columns=['unknown']).sort_values(by=['eos_account'])
         ram_accounts = ram_accounts.drop(0)
         ram_accounts['balance'] = ram_accounts['balance'].apply(lambda x: '{:.4f}'.format(float(x)))           
         ram_accounts = ram_accounts.reset_index(drop=True) 
     except Exception as e:
         logger.critical(
-            'Error loading ram accounts snapshot at {}: {}'.format(RAM_ACCOUNTS_FILE, e))
+            'Error loading ram accounts snapshot at {}: {}'.format(TCRP_ACCOUNTS_FILE, e))
         exit(1)
 
     logger.info('Getting ram accounts from chain...')
@@ -190,6 +190,40 @@ def main():
         changed_to = chain_accounts.values[difference_locations]
         changes = pd.DataFrame({'from': changed_from, 'to': changed_to}, index=changed.index)
         logger.critical('ram accounts in csv and chain don`t match')
+        print(changes)
+        quit()
+    
+    #Check tcrp accounts
+    download_file(TCRP_ACCOUNTS_FILE,'https://raw.githubusercontent.com/Telos-Foundation/snapshots/master/tcrp_accounts.csv')
+    logger.info('Loading tcrp_accounts...')
+    try:
+        tcrp_accounts = pd.read_csv(TCRP_ACCOUNTS_FILE, dtype=str, names=[
+                                                                         'eos_account', 'eos_key', 'balance']).sort_values(by=['eos_account'])
+        tcrp_accounts = tcrp_accounts.drop(0)
+        tcrp_accounts['balance'] = tcrp_accounts['balance'].apply(lambda x: '{:.4f}'.format(float(x)))           
+        tcrp_accounts = tcrp_accounts.reset_index(drop=True) 
+    except Exception as e:
+        logger.critical(
+            'Error loading tcrp accounts snapshot at {}: {}'.format(TCRP_ACCOUNTS_FILE, e))
+        exit(1)
+
+    logger.info('Getting tcrp accounts from chain...')
+    try:
+        chain_accounts = get_accounts(tcrp_accounts['eos_account'].tolist()).sort_values(by=['eos_account'])
+    except Exception as e:
+        logger.critical('Error getting tcrp acounts from chain: {}'.format(e))
+    
+    logger.info('Checking tcrp accounts...')
+    if tcrp_accounts.equals(chain_accounts):
+        logger.info('All tcrp accounts are present on chain with the right key and balance')
+    else:
+        ne_stacked = (tcrp_accounts != chain_accounts).stack()
+        changed = ne_stacked[ne_stacked]
+        difference_locations = np.where(tcrp_accounts != chain_accounts)
+        changed_from = tcrp_accounts.values[difference_locations]
+        changed_to = chain_accounts.values[difference_locations]
+        changes = pd.DataFrame({'from': changed_from, 'to': changed_to}, index=changed.index)
+        logger.critical('tcrp accounts in csv and chain don`t match')
         print(changes)
         quit()
 
