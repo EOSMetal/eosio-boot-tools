@@ -58,6 +58,7 @@ logger.addHandler(fh)
 
 pp = pprint.PrettyPrinter(indent=2)
 BP_ACCOUNTS_FILE = 'eos_bp_accounts.csv'
+RAM_ACCOUNTS_FILE = 'ram_accounts.csv'
 SCRIPT_PATH = os.path.dirname(os.path.abspath(
     inspect.getfile(inspect.currentframe())))
 cleos = eospy.cleos.Cleos(url=API_ENDPOINT)
@@ -68,6 +69,8 @@ def asset2float(asset):
 def get_account_info(account):
     try:
         result = cleos.get_account(account)
+        if not  'core_liquid_balance' in result:
+            result['core_liquid_balance'] = "0"
         key = result['permissions'][0]['required_auth']['keys'][0]['key']
         balance = round(asset2float(result['core_liquid_balance']) + asset2float(result['total_resources']['cpu_weight']) + asset2float(result['total_resources']['net_weight']), 4)
         
@@ -126,8 +129,10 @@ def main():
         bp_accounts = pd.read_csv(BP_ACCOUNTS_FILE, dtype=str, names=['eth_address',
                                                                          'eos_account', 'eos_key', 'balance']).drop(columns=['eth_address']).sort_values(by=['eos_account'])
         #Remove tabs
+        bp_accounts = bp_accounts.drop(0)
         bp_accounts['eos_account'] = bp_accounts['eos_account'].apply(lambda x: re.sub(r"[\n\t\s]*", "", x))                                                                         
-        bp_accounts['eos_key'] = bp_accounts['eos_key'].apply(lambda x: re.sub(r"[\n\t\s]*", "", x))                                                                         
+        bp_accounts['eos_key'] = bp_accounts['eos_key'].apply(lambda x: re.sub(r"[\n\t\s]*", "", x))                  
+        bp_accounts['balance'] = bp_accounts['balance'].apply(lambda x: '{:.4f}'.format(float(x)))                                                                 
         bp_accounts = bp_accounts.reset_index(drop=True) 
     except Exception as e:
         logger.critical(
@@ -152,6 +157,39 @@ def main():
         changed_to = chain_accounts.values[difference_locations]
         changes = pd.DataFrame({'from': changed_from, 'to': changed_to}, index=changed.index)
         logger.critical('BP accounts in csv and chain don`t match')
+        print(changes)
+    
+    #Check ram accounts
+    download_file(RAM_ACCOUNTS_FILE,'https://raw.githubusercontent.com/Telos-Foundation/snapshots/master/ram_accounts.csv')
+    logger.info('Loading ram_accounts...')
+    try:
+        ram_accounts = pd.read_csv(RAM_ACCOUNTS_FILE, dtype=str, names=['eth_address','unknown',
+                                                                         'eos_account', 'eos_key', 'balance']).drop(columns=['eth_address']).drop(columns=['unknown']).sort_values(by=['eos_account'])
+        ram_accounts = ram_accounts.drop(0)
+        ram_accounts['balance'] = ram_accounts['balance'].apply(lambda x: '{:.4f}'.format(float(x)))           
+        ram_accounts = ram_accounts.reset_index(drop=True) 
+    except Exception as e:
+        logger.critical(
+            'Error loading ram accounts snapshot at {}: {}'.format(RAM_ACCOUNTS_FILE, e))
+        exit(1)
+
+    logger.info('Getting ram accounts from chain...')
+    try:
+        chain_accounts = get_accounts(ram_accounts['eos_account'].tolist()).sort_values(by=['eos_account'])
+    except Exception as e:
+        logger.critical('Error getting ram acounts from chain: {}'.format(e))
+    
+    logger.info('Checking ram accounts...')
+    if ram_accounts.equals(chain_accounts):
+        logger.info('All ram accounts are present on chain with the right key and balance')
+    else:
+        ne_stacked = (ram_accounts != chain_accounts).stack()
+        changed = ne_stacked[ne_stacked]
+        difference_locations = np.where(ram_accounts != chain_accounts)
+        changed_from = ram_accounts.values[difference_locations]
+        changed_to = chain_accounts.values[difference_locations]
+        changes = pd.DataFrame({'from': changed_from, 'to': changed_to}, index=changed.index)
+        logger.critical('ram accounts in csv and chain don`t match')
         print(changes)
         quit()
 
