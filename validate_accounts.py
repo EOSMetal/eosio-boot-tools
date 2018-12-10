@@ -61,6 +61,8 @@ pp = pprint.PrettyPrinter(indent=2)
 BP_ACCOUNTS_FILE = 'eos_bp_accounts.csv'
 RAM_ACCOUNTS_FILE = 'ram_accounts.csv'
 TCRP_ACCOUNTS_FILE = 'tcrp_accounts.csv'
+TFRP_ACCOUNTS_FILE = 'tfrp_accounts.csv'
+TFVT_ACCOUNTS_FILE = 'tfvt_accounts.csv'
 SPECIAL_ACCOUNTS_FILE = 'special_accounts.csv'
 SCRIPT_PATH = os.path.dirname(os.path.abspath(
     inspect.getfile(inspect.currentframe())))
@@ -232,6 +234,76 @@ def main():
         logger.critical('tcrp accounts in csv and chain don`t match')
         print(changes)
     
+    #Check tfrp accounts
+    download_file(TFRP_ACCOUNTS_FILE,'https://raw.githubusercontent.com/Telos-Foundation/snapshots/master/tfrp_accounts.csv')
+    logger.info('Loading tfrp_accounts...')
+    with open(TFRP_ACCOUNTS_FILE, 'r') as fin:
+        data = fin.read().splitlines(True)
+    with open(TFRP_ACCOUNTS_FILE, 'w') as fout:
+        fout.writelines(data[1:])
+    try:
+        tfrp_accounts = pd.read_csv(TFRP_ACCOUNTS_FILE, dtype=str, names=[
+                                                                         'eos_account', 'eos_key', 'balance']).sort_values(by=['eos_account'])
+        #tfrp_accounts = tfrp_accounts.drop(0)
+        tfrp_accounts['balance'] = tfrp_accounts['balance'].apply(lambda x: '{:.4f}'.format(float(x)))           
+        tfrp_accounts = tfrp_accounts.reset_index(drop=True) 
+    except Exception as e:
+        logger.critical(
+            'Error loading tfrp accounts snapshot at {}: {}'.format(TFRP_ACCOUNTS_FILE, e))
+        exit(1)
+
+    logger.info('Getting tfrp accounts from chain...')
+    try:
+        chain_accounts = get_accounts(tfrp_accounts['eos_account'].tolist()).sort_values(by=['eos_account'])
+    except Exception as e:
+        logger.critical('Error getting tfrp acounts from chain: {}'.format(e))
+    
+    logger.info('Checking tfrp accounts...')
+    if tfrp_accounts.equals(chain_accounts):
+        logger.info('All tfrp accounts are present on chain with the right key and balance')
+    else:
+        ne_stacked = (tfrp_accounts != chain_accounts).stack()
+        changed = ne_stacked[ne_stacked]
+        difference_locations = np.where(tfrp_accounts != chain_accounts)
+        changed_from = tfrp_accounts.values[difference_locations]
+        changed_to = chain_accounts.values[difference_locations]
+        changes = pd.DataFrame({'from': changed_from, 'to': changed_to}, index=changed.index)
+        logger.critical('tfrp accounts in csv and chain don`t match')
+        print(changes)
+
+    #Check tfvt accounts
+    download_file(TFVT_ACCOUNTS_FILE,'https://raw.githubusercontent.com/Telos-Foundation/snapshots/master/tfvt_accounts.csv')
+    logger.info('Loading tfvt_accounts...')
+    try:
+        tfvt_accounts = pd.read_csv(TFVT_ACCOUNTS_FILE, dtype=str, names=['a', 'b',
+                                                                         'eos_account', 'eos_key', 'balance']).drop(columns=['a', 'b']).sort_values(by=['eos_account'])
+        tfvt_accounts = tfvt_accounts.drop(0)
+        tfvt_accounts['balance'] = tfvt_accounts['balance'].apply(lambda x: '{:.4f}'.format(float(x)))           
+        tfvt_accounts = tfvt_accounts.reset_index(drop=True) 
+    except Exception as e:
+        logger.critical(
+            'Error loading tfvt accounts snapshot at {}: {}'.format(TFVT_ACCOUNTS_FILE, e))
+        exit(1)
+
+    logger.info('Getting tfvt accounts from chain...')
+    try:
+        chain_accounts = get_accounts(tfvt_accounts['eos_account'].tolist()).sort_values(by=['eos_account'])
+    except Exception as e:
+        logger.critical('Error getting tfvt acounts from chain: {}'.format(e))
+    
+    logger.info('Checking tfvt accounts...')
+    if tfvt_accounts.equals(chain_accounts):
+        logger.info('All tfvt accounts are present on chain with the right key and balance')
+    else:
+        ne_stacked = (tfvt_accounts != chain_accounts).stack()
+        changed = ne_stacked[ne_stacked]
+        difference_locations = np.where(tfvt_accounts != chain_accounts)
+        changed_from = tfvt_accounts.values[difference_locations]
+        changed_to = chain_accounts.values[difference_locations]
+        changes = pd.DataFrame({'from': changed_from, 'to': changed_to}, index=changed.index)
+        logger.critical('tfvt accounts in csv and chain don`t match')
+        print(changes)
+
     #Check special accounts
     download_file(SPECIAL_ACCOUNTS_FILE,'https://raw.githubusercontent.com/Telos-Foundation/snapshots/master/telos_special_accounts.csv')
     logger.info('Loading special_accounts...')
