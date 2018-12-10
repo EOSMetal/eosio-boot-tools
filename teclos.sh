@@ -1,3 +1,3 @@
 #!/bin/bash
 
-/opt/telos-launch/source/telos/build/programs/teclos/teclos "$@"
+/home/eoschueco/telos-launch/telos/build/programs/teclos/teclos -u http://localhost:48888 "$@"

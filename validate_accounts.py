@@ -9,6 +9,9 @@ import eospy.cleos
 import pandas as pd
 import numpy as np
 import pprint
+import csv
+import requests
+import re
 from multiprocessing import Pool
 
 SCRIPT_PATH = os.path.dirname(os.path.abspath(
@@ -54,6 +57,7 @@ fh.setFormatter(formatter)
 logger.addHandler(fh)
 
 pp = pprint.PrettyPrinter(indent=2)
+BP_ACCOUNTS_FILE = 'eos_bp_accounts.csv'
 SCRIPT_PATH = os.path.dirname(os.path.abspath(
     inspect.getfile(inspect.currentframe())))
 cleos = eospy.cleos.Cleos(url=API_ENDPOINT)
@@ -87,6 +91,14 @@ def get_account_info(account):
     #logger.debug('{} {} {}'.format(account, key, balance))
     return key, balance
 
+def download_file(filename, url):
+    with open(filename, 'wb') as fout:
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+        # Write response data to file
+        for block in response.iter_content(4096):
+            fout.write(block)
+
 def get_accounts(accounts):
     i= 0
     keys = []
@@ -101,10 +113,63 @@ def get_accounts(accounts):
      'balance': ['{:.4f}'.format(x[1]) for x in results]
     }, dtype=str)
 
+def load_csv(file):
+    with open(file, newline='') as csvfile:
+        data = list(csv.reader(csvfile))
+    return data
+
 def main():
+    #Check bp accounts
+    download_file(BP_ACCOUNTS_FILE,'https://raw.githubusercontent.com/Telos-Foundation/snapshots/master/eos_bp_accounts.csv')
+    logger.info('Loading bp_accounts...')
+    try:
+        bp_accounts = pd.read_csv(BP_ACCOUNTS_FILE, dtype=str, names=['eth_address',
+                                                                         'eos_account', 'eos_key', 'balance']).drop(columns=['eth_address']).sort_values(by=['eos_account'])
+        #Remove tabs
+        bp_accounts['eos_account'] = bp_accounts['eos_account'].apply(lambda x: re.sub(r"[\n\t\s]*", "", x))                                                                         
+        bp_accounts['eos_key'] = bp_accounts['eos_key'].apply(lambda x: re.sub(r"[\n\t\s]*", "", x))                                                                         
+        bp_accounts = bp_accounts.reset_index(drop=True) 
+    except Exception as e:
+        logger.critical(
+            'Error loading bp accounts snapshot at {}: {}'.format(BP_ACCOUNTS_FILE, e))
+        exit(1)
+
+    logger.info('Getting bp accounts from chain...')
+    try:
+        chain_accounts = get_accounts(bp_accounts['eos_account'].tolist()).sort_values(by=['eos_account'])
+    except Exception as e:
+        logger.critical('Error getting bp acounts from chain: {}'.format(e))
+        quit()
+    
+    logger.info('Checking bp accounts...')
+    if bp_accounts.equals(chain_accounts):
+        logger.info('All bp accounts are present on chain with the right key and balance')
+    else:
+        ne_stacked = (bp_accounts != chain_accounts).stack()
+        changed = ne_stacked[ne_stacked]
+        difference_locations = np.where(bp_accounts != chain_accounts)
+        changed_from = bp_accounts.values[difference_locations]
+        changed_to = chain_accounts.values[difference_locations]
+        changes = pd.DataFrame({'from': changed_from, 'to': changed_to}, index=changed.index)
+        logger.critical('BP accounts in csv and chain don`t match')
+        print(changes)
+        quit()
+
+    quit()
+    #Check genesis accounts
+    download_file('key_recovery.csv','https://raw.githubusercontent.com/Telos-Foundation/snapshots/master/key_recovery.csv')
+    key_recovery = load_csv('key_recovery.csv')
+
+    logger.info('Loading snapshot...')
     try:
         telos_genesis = pd.read_csv(SNAPSHOT_FILE, dtype=str, names=['eth_address',
-                                                                         'eos_account', 'eos_key', 'balance']).drop(columns=['eth_address']).sort_values(by=['eos_account'])
+                                                                         'eos_account', 'eos_key', 'balance']).sort_values(by=['eos_account'])
+        
+        logger.info('Merging key recovery...')
+        for row in key_recovery:
+            telos_genesis.loc[telos_genesis['eth_address'] == row[0].lower(), ['eos_key']] = row[1]
+
+        telos_genesis =telos_genesis.drop(columns=['eth_address'])
         telos_genesis = telos_genesis.reset_index(drop=True)                                                                        
     except Exception as e:
         logger.critical(
