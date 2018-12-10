@@ -1,5 +1,5 @@
 *.log
-snapshot.csv
+*.csv
 .vscode/
 deploy_contracts_accounts.sh
 wallet_pass
