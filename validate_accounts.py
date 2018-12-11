@@ -58,7 +58,8 @@ fh.setFormatter(formatter)
 logger.addHandler(fh)
 
 pp = pprint.PrettyPrinter(indent=2)
-BP_ACCOUNTS_FILE = 'eos_bp_accounts.csv'
+BP_ACCOUNTS_FILE = 'initial_block_producers.csv'
+EOS_BP_ACCOUNTS_FILE = 'eos_bp_accounts.csv'
 RAM_ACCOUNTS_FILE = 'ram_accounts.csv'
 TCRP_ACCOUNTS_FILE = 'tcrp_accounts.csv'
 TFRP_ACCOUNTS_FILE = 'tfrp_accounts.csv'
@@ -132,16 +133,20 @@ def load_csv(file):
 
 def main():
     #Check bp accounts
-    download_file(BP_ACCOUNTS_FILE,'https://raw.githubusercontent.com/Telos-Foundation/snapshots/master/eos_bp_accounts.csv')
+    download_file(BP_ACCOUNTS_FILE,'https://raw.githubusercontent.com/Telos-Foundation/snapshots/master/initial_block_producers.csv')
     logger.info('Loading bp_accounts...')
     try:
-        bp_accounts = pd.read_csv(BP_ACCOUNTS_FILE, dtype=str, names=['eth_address',
-                                                                         'eos_account', 'eos_key', 'balance']).drop(columns=['eth_address']).sort_values(by=['eos_account'])
+        with open(BP_ACCOUNTS_FILE, 'r') as fin:
+            data = fin.read().splitlines(True)
+        with open(BP_ACCOUNTS_FILE, 'w') as fout:
+            fout.writelines(data[1:])
+        
+        bp_accounts = pd.read_csv(BP_ACCOUNTS_FILE, dtype=str, names=['a', 'b', 'eos_account', 'eos_key', 'balance', 'd']).drop(columns=['a', 'b', 'd', 'balance']).sort_values(by=['eos_account'])
+
         #Remove tabs
-        bp_accounts = bp_accounts.drop(0)
         bp_accounts['eos_account'] = bp_accounts['eos_account'].apply(lambda x: re.sub(r"[\n\t\s]*", "", x))                                                                         
         bp_accounts['eos_key'] = bp_accounts['eos_key'].apply(lambda x: re.sub(r"[\n\t\s]*", "", x))                  
-        bp_accounts['balance'] = bp_accounts['balance'].apply(lambda x: '{:.4f}'.format(float(x)))                                                                 
+        #bp_accounts['balance'] = bp_accounts['balance'].apply(lambda x: '{:.4f}'.format(float(x)))                                                                 
         bp_accounts = bp_accounts.reset_index(drop=True) 
     except Exception as e:
         logger.critical(
@@ -150,14 +155,14 @@ def main():
 
     logger.info('Getting bp accounts from chain...')
     try:
-        chain_accounts = get_accounts(bp_accounts['eos_account'].tolist()).sort_values(by=['eos_account'])
+        chain_accounts = get_accounts(bp_accounts['eos_account'].tolist()).drop(columns=['balance']).sort_values(by=['eos_account'])
     except Exception as e:
         logger.critical('Error getting bp acounts from chain: {}'.format(e))
         quit()
     
     logger.info('Checking bp accounts...')
     if bp_accounts.equals(chain_accounts):
-        logger.info('All bp accounts are present on chain with the right key and balance')
+        logger.info('All bp accounts are present on chain with the right key')
     else:
         ne_stacked = (bp_accounts != chain_accounts).stack()
         changed = ne_stacked[ne_stacked]
@@ -168,14 +173,56 @@ def main():
         logger.critical('BP accounts in csv and chain don`t match')
         print(changes)
     
+    #Check eos bp accounts
+    download_file(EOS_BP_ACCOUNTS_FILE,'https://raw.githubusercontent.com/Telos-Foundation/snapshots/master/eos_bp_accounts.csv')
+    logger.info('Loading eos_bp_accounts...')
+    try:
+        with open(EOS_BP_ACCOUNTS_FILE, 'r') as fin:
+            data = fin.read().splitlines(True)
+        with open(EOS_BP_ACCOUNTS_FILE, 'w') as fout:
+            fout.writelines(data[1:])
+        
+        bp_accounts = pd.read_csv(EOS_BP_ACCOUNTS_FILE, dtype=str, names=['a', 'eos_account', 'eos_key', 'balance']).drop(columns=['a', 'balance']).sort_values(by=['eos_account'])
+
+        #Remove tabs
+        bp_accounts['eos_account'] = bp_accounts['eos_account'].apply(lambda x: re.sub(r"[\n\t\s]*", "", x))                                                                         
+        bp_accounts['eos_key'] = bp_accounts['eos_key'].apply(lambda x: re.sub(r"[\n\t\s]*", "", x))                  
+        #bp_accounts['balance'] = bp_accounts['balance'].apply(lambda x: '{:.4f}'.format(float(x)))                                                                 
+        bp_accounts = bp_accounts.reset_index(drop=True) 
+    except Exception as e:
+        logger.critical(
+            'Error loading bp accounts snapshot at {}: {}'.format(EOS_BP_ACCOUNTS_FILE, e))
+        exit(1)
+
+    logger.info('Getting eos bp accounts from chain...')
+    try:
+        chain_accounts = get_accounts(bp_accounts['eos_account'].tolist()).drop(columns=['balance']).sort_values(by=['eos_account'])
+    except Exception as e:
+        logger.critical('Error getting eos bp acounts from chain: {}'.format(e))
+        quit()
+    
+    logger.info('Checking eos bp accounts...')
+
+    if bp_accounts.equals(chain_accounts):
+        logger.info('All eos bp accounts are present on chain with the right key')
+    else:
+        ne_stacked = (bp_accounts != chain_accounts).stack()
+        changed = ne_stacked[ne_stacked]
+        difference_locations = np.where(bp_accounts != chain_accounts)
+        changed_from = bp_accounts.values[difference_locations]
+        changed_to = chain_accounts.values[difference_locations]
+        changes = pd.DataFrame({'from': changed_from, 'to': changed_to}, index=changed.index)
+        logger.critical('EOS BP accounts in csv and chain don`t match')
+        print(changes)
+    
     #Check ram accounts
     download_file(RAM_ACCOUNTS_FILE,'https://raw.githubusercontent.com/Telos-Foundation/snapshots/master/ram_accounts.csv')
     logger.info('Loading ram_accounts...')
     try:
         ram_accounts = pd.read_csv(RAM_ACCOUNTS_FILE, dtype=str, names=['eth_address','unknown',
-                                                                         'eos_account', 'eos_key', 'balance']).drop(columns=['eth_address']).drop(columns=['unknown']).sort_values(by=['eos_account'])
+                                                                         'eos_account', 'eos_key', 'balance']).drop(columns=['eth_address', 'balance']).drop(columns=['unknown']).sort_values(by=['eos_account'])
         ram_accounts = ram_accounts.drop(0)
-        ram_accounts['balance'] = ram_accounts['balance'].apply(lambda x: '{:.4f}'.format(float(x)))           
+        #ram_accounts['balance'] = ram_accounts['balance'].apply(lambda x: '{:.4f}'.format(float(x)))           
         ram_accounts = ram_accounts.reset_index(drop=True) 
     except Exception as e:
         logger.critical(
@@ -184,13 +231,13 @@ def main():
 
     logger.info('Getting ram accounts from chain...')
     try:
-        chain_accounts = get_accounts(ram_accounts['eos_account'].tolist()).sort_values(by=['eos_account'])
+        chain_accounts = get_accounts(ram_accounts['eos_account'].tolist()).drop(columns=['balance']).sort_values(by=['eos_account'])
     except Exception as e:
         logger.critical('Error getting ram acounts from chain: {}'.format(e))
     
     logger.info('Checking ram accounts...')
     if ram_accounts.equals(chain_accounts):
-        logger.info('All ram accounts are present on chain with the right key and balance')
+        logger.info('All ram accounts are present on chain with the right key')
     else:
         ne_stacked = (ram_accounts != chain_accounts).stack()
         changed = ne_stacked[ne_stacked]
@@ -206,9 +253,9 @@ def main():
     logger.info('Loading tcrp_accounts...')
     try:
         tcrp_accounts = pd.read_csv(TCRP_ACCOUNTS_FILE, dtype=str, names=[
-                                                                         'eos_account', 'eos_key', 'balance']).sort_values(by=['eos_account'])
+                                                                         'eos_account', 'eos_key', 'balance']).drop(columns=['balance']).sort_values(by=['eos_account'])
         tcrp_accounts = tcrp_accounts.drop(0)
-        tcrp_accounts['balance'] = tcrp_accounts['balance'].apply(lambda x: '{:.4f}'.format(float(x)))           
+        #tcrp_accounts['balance'] = tcrp_accounts['balance'].apply(lambda x: '{:.4f}'.format(float(x)))           
         tcrp_accounts = tcrp_accounts.reset_index(drop=True) 
     except Exception as e:
         logger.critical(
@@ -217,13 +264,13 @@ def main():
 
     logger.info('Getting tcrp accounts from chain...')
     try:
-        chain_accounts = get_accounts(tcrp_accounts['eos_account'].tolist()).sort_values(by=['eos_account'])
+        chain_accounts = get_accounts(tcrp_accounts['eos_account'].tolist()).drop(columns=['balance']).sort_values(by=['eos_account'])
     except Exception as e:
         logger.critical('Error getting tcrp acounts from chain: {}'.format(e))
     
     logger.info('Checking tcrp accounts...')
     if tcrp_accounts.equals(chain_accounts):
-        logger.info('All tcrp accounts are present on chain with the right key and balance')
+        logger.info('All tcrp accounts are present on chain with the right key')
     else:
         ne_stacked = (tcrp_accounts != chain_accounts).stack()
         changed = ne_stacked[ne_stacked]
@@ -260,7 +307,7 @@ def main():
     
     logger.info('Checking tfrp accounts...')
     if tfrp_accounts.equals(chain_accounts):
-        logger.info('All tfrp accounts are present on chain with the right key and balance')
+        logger.info('All tfrp accounts are present on chain with the right key')
     else:
         ne_stacked = (tfrp_accounts != chain_accounts).stack()
         changed = ne_stacked[ne_stacked]
@@ -276,9 +323,9 @@ def main():
     logger.info('Loading tfvt_accounts...')
     try:
         tfvt_accounts = pd.read_csv(TFVT_ACCOUNTS_FILE, dtype=str, names=['a', 'b',
-                                                                         'eos_account', 'eos_key', 'balance']).drop(columns=['a', 'b']).sort_values(by=['eos_account'])
+                                                                         'eos_account', 'eos_key', 'balance']).drop(columns=['a', 'b', 'balance']).sort_values(by=['eos_account'])
         tfvt_accounts = tfvt_accounts.drop(0)
-        tfvt_accounts['balance'] = tfvt_accounts['balance'].apply(lambda x: '{:.4f}'.format(float(x)))           
+        #tfvt_accounts['balance'] = tfvt_accounts['balance'].apply(lambda x: '{:.4f}'.format(float(x)))           
         tfvt_accounts = tfvt_accounts.reset_index(drop=True) 
     except Exception as e:
         logger.critical(
@@ -287,13 +334,13 @@ def main():
 
     logger.info('Getting tfvt accounts from chain...')
     try:
-        chain_accounts = get_accounts(tfvt_accounts['eos_account'].tolist()).sort_values(by=['eos_account'])
+        chain_accounts = get_accounts(tfvt_accounts['eos_account'].tolist()).drop(columns=['balance']).sort_values(by=['eos_account'])
     except Exception as e:
         logger.critical('Error getting tfvt acounts from chain: {}'.format(e))
     
     logger.info('Checking tfvt accounts...')
     if tfvt_accounts.equals(chain_accounts):
-        logger.info('All tfvt accounts are present on chain with the right key and balance')
+        logger.info('All tfvt accounts are present on chain with the right key')
     else:
         ne_stacked = (tfvt_accounts != chain_accounts).stack()
         changed = ne_stacked[ne_stacked]
@@ -337,7 +384,6 @@ def main():
         logger.critical('special accounts in csv and chain don`t match')
         print(changes)
 
-    quit()
     #Check genesis accounts
     download_file('key_recovery.csv','https://raw.githubusercontent.com/Telos-Foundation/snapshots/master/key_recovery.csv')
     key_recovery = load_csv('key_recovery.csv')
